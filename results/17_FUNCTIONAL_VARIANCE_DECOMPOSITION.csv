@@ -1,0 +1,6 @@
+term,n_samples,df_term_unique,df_residual_full,r2_standalone,r2_sequential_patient_first,r2_unique_joint_model,pseudo_f_unique,permutation_p,permutation_scheme,full_model_r2,r2_df_adjusted,r2_stage_permuted_null_median,r2_excess_over_stage_permuted_null_median,stage_permuted_upper_tail_p
+patient_identity,195,44,147,0.3881391463676832,0.3881391463676832,0.3594699579687652,2.067088237721664,0.0007,patient labels independently permuted within visit ordinal; each visit retains its observed patient-label set and sample count,0.4190105537970427,0.20334895567335953,0.24565428778295628,0.14248485858472698,0.0007
+visit_order,195,1,147,0.022741420837504325,0.021978768823504552,0.02128662611468415,5.385870706101379,0.001,within-patient_covariate-label_sensitivity,0.4190105537970427,,,,
+antibiotic_exposed,195,0,147,0.008632570965160525,0.0,0.0,,,within-patient_covariate-label_sensitivity,0.4190105537970427,,,,
+depth_cm,195,1,147,0.030219309970559646,0.00889263860585519,0.00889263860585519,2.249985578230387,0.044,within-patient_covariate-label_sensitivity,0.4190105537970427,,,,
+joint_model,195,47,147,0.4190105537970427,0.4190105537970427,0.4190105537970427,2.2556732810748685,,not_applicable,0.4190105537970427,,,,

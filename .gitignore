@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+source_data/
+recomputed_outputs/
+.DS_Store

@@ -1,0 +1,2 @@
+analysis,n_design_permutations,n_contributing_patients,observed_median_between_minus_within_distance,permuted_null_median,permuted_null_q025,permuted_null_q975,observed_minus_permuted_null_median,upper_tail_randomization_p,permutation_scheme
+primary_bray_same_or_adjacent_visit_design_preserving_permutation,9999,44,0.015346642487692082,-0.0028940292718418748,-0.008357414709825862,0.00275293032341561,0.018240671759533957,0.0001,patient labels independently permuted within visit ordinal; each visit retains its observed patient-label set and sample count

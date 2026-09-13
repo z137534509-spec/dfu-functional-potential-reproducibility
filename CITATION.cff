@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this reproducibility package, please cite its versioned Zenodo record and the original source study."
+type: software
+title: "Reproducibility package: patient-specific microbial functional potential in longitudinal diabetic foot ulcers"
+version: 1.0.0
+date-released: 2026-09-13
+license: CC-BY-4.0
+authors:
+  - family-names: Zhang
+    given-names: Hongjie
+    affiliation: Affiliated Hospital of Gansu University of Chinese Medicine
+  - family-names: Liu
+    given-names: Liping
+    affiliation: Affiliated Hospital of Gansu University of Chinese Medicine
+repository-code: https://github.com/z137534509-spec/dfu-functional-potential-reproducibility
+references:
+  - type: article
+    authors:
+      - family-names: Kalan
+        given-names: Lindsay R.
+    title: "Strain- and species-level variation in the microbiome of diabetic wounds is associated with clinical outcomes and therapeutic efficacy"
+    journal: Cell Host & Microbe
+    year: 2019
+    doi: 10.1016/j.chom.2019.03.006
