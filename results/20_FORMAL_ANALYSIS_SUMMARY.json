@@ -22,7 +22,36 @@
     "permuted_null_q975": 0.00275293032341561,
     "observed_minus_permuted_null_median": 0.018240671759533957,
     "upper_tail_randomization_p": 0.0001,
+    "two_sided_randomization_p_centered_on_null_median": 0.0001,
+    "two_sided_extremeness_definition": "absolute deviation from the design-preserving randomization-null median",
     "permutation_scheme": "patient labels independently permuted within visit ordinal; each visit retains its observed patient-label set and sample count"
+  },
+  "exact_visit_pair_matched_sensitivity": {
+    "analysis": "bray_exact_visit_pair_matched",
+    "n_patients": 44,
+    "n_visit_pairs_contributing": 472,
+    "median_between_minus_within_distance": 0.01425971434700048,
+    "ci95_low": 0.005535720431413739,
+    "ci95_high": 0.0275952925808255,
+    "directional_proportion_positive": 0.75,
+    "wilcoxon_two_sided_p": 0.004988712478962043,
+    "ci_method": "patient-level percentile bootstrap",
+    "n_patient_bootstrap_replicates": 2000,
+    "matching_definition": "each within-patient profile pair compared with cross-patient profile pairs at the identical unordered visit-ordinal pair; external pair members required to come from two different patients, neither the focal patient"
+  },
+  "exact_visit_pair_matched_design_preserving_permutation": {
+    "analysis": "bray_exact_visit_pair_matched_design_preserving_permutation",
+    "n_design_permutations": 9999,
+    "n_contributing_patients": 44,
+    "observed_median_between_minus_within_distance": 0.01425971434700048,
+    "permuted_null_median": -0.0021502580764276615,
+    "permuted_null_q025": -0.010056281100859842,
+    "permuted_null_q975": 0.005982154009343801,
+    "observed_minus_permuted_null_median": 0.01640997242342814,
+    "upper_tail_randomization_p": 0.0001,
+    "two_sided_randomization_p_centered_on_null_median": 0.0001,
+    "two_sided_extremeness_definition": "absolute deviation from the design-preserving randomization-null median",
+    "permutation_scheme": "patient labels independently permuted within visit ordinal; exact unordered visit-pair comparator structure rebuilt after each relabeling"
   },
   "primary_full_recomputation_cluster_bootstrap": {
     "analysis": "primary_bray_same_or_adjacent_visit_full_recomputation_cluster_bootstrap",

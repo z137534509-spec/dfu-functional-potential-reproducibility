@@ -216,18 +216,186 @@ def primary_design_preserving_permutation(
         null[index], permuted_patient_medians = matched_primary_statistic_from_labels(distance, visits, permuted_labels)
         if len(permuted_patient_medians) != len(observed_patient_medians):
             raise RuntimeError("Stage-preserving permutation changed the number of contributing patient labels.")
+    null_median = float(np.median(null))
     p_upper = float((1 + np.sum(null >= observed)) / (1 + len(null)))
+    # This is a sensitivity to the pre-specified directional test.  Because
+    # finite randomization distributions need not be centered exactly on zero,
+    # extremeness is assessed around the randomization-null median.
+    p_two_sided = float(
+        (1 + np.sum(np.abs(null - null_median) >= np.abs(observed - null_median)))
+        / (1 + len(null))
+    )
     summary = {
         "analysis": "primary_bray_same_or_adjacent_visit_design_preserving_permutation",
         "n_design_permutations": int(N_DESIGN_PERMUTATIONS),
         "n_contributing_patients": int(len(observed_patient_medians)),
         "observed_median_between_minus_within_distance": observed,
-        "permuted_null_median": float(np.median(null)),
+        "permuted_null_median": null_median,
         "permuted_null_q025": float(np.quantile(null, 0.025)),
         "permuted_null_q975": float(np.quantile(null, 0.975)),
         "observed_minus_permuted_null_median": float(observed - np.median(null)),
         "upper_tail_randomization_p": p_upper,
+        "two_sided_randomization_p_centered_on_null_median": p_two_sided,
+        "two_sided_extremeness_definition": "absolute deviation from the design-preserving randomization-null median",
         "permutation_scheme": "patient labels independently permuted within visit ordinal; each visit retains its observed patient-label set and sample count",
+    }
+    return summary, pd.DataFrame({"permutation_index": np.arange(1, N_DESIGN_PERMUTATIONS + 1), "null_statistic": null})
+
+
+def build_exact_visit_pair_cache(visits: np.ndarray) -> dict[tuple[int, int], tuple[np.ndarray, np.ndarray]]:
+    """Index all unordered profile pairs by their exact unordered visit pair."""
+    buckets: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for first, second in itertools.combinations(range(len(visits)), 2):
+        key = tuple(sorted((int(visits[first]), int(visits[second]))))
+        buckets.setdefault(key, []).append((first, second))
+    return {
+        key: (
+            np.asarray([pair[0] for pair in pairs], dtype=int),
+            np.asarray([pair[1] for pair in pairs], dtype=int),
+        )
+        for key, pairs in buckets.items()
+    }
+
+
+def visit_pair_matched_statistic_from_labels(
+    distance: np.ndarray,
+    visits: np.ndarray,
+    labels: np.ndarray,
+    pair_cache: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]],
+    source_patient_labels: np.ndarray | None = None,
+    return_rows: bool = False,
+) -> tuple[float, np.ndarray, list[dict]]:
+    """Patient-level exact-visit-pair-matched between-minus-within statistic.
+
+    Each within-patient pair is compared with distances between *two different*
+    external patients at the identical unordered pair of visit ordinals.  Thus
+    both sides of this sensitivity carry the same visit-pair structure.  The
+    original same-or-adjacent-visit profile-level estimand remains primary.
+    """
+    if source_patient_labels is not None and len(source_patient_labels) != len(labels):
+        raise ValueError("source_patient_labels must align with labels.")
+    per_patient: dict[int, list[float]] = {}
+    rows: list[dict] = []
+    for label in np.unique(labels):
+        own_indices = np.flatnonzero(labels == label)
+        if len(own_indices) < 2:
+            continue
+        for first, second in itertools.combinations(own_indices, 2):
+            key = tuple(sorted((int(visits[first]), int(visits[second]))))
+            candidate_first, candidate_second = pair_cache[key]
+            external_mask = (
+                (labels[candidate_first] != label)
+                & (labels[candidate_second] != label)
+                & (labels[candidate_first] != labels[candidate_second])
+            )
+            if source_patient_labels is not None:
+                focal_source = source_patient_labels[first]
+                external_mask &= (
+                    (source_patient_labels[candidate_first] != focal_source)
+                    & (source_patient_labels[candidate_second] != focal_source)
+                    & (source_patient_labels[candidate_first] != source_patient_labels[candidate_second])
+                )
+            if not external_mask.any():
+                continue
+            external_distance = distance[candidate_first[external_mask], candidate_second[external_mask]]
+            within_distance = float(distance[first, second])
+            gap = float(np.median(external_distance) - within_distance)
+            per_patient.setdefault(int(label), []).append(gap)
+            if return_rows:
+                rows.append({
+                    "patient_id": int(label),
+                    "first_sample_index": int(first), "second_sample_index": int(second),
+                    "first_visit": int(visits[first]), "second_visit": int(visits[second]),
+                    "n_exact_visit_pair_external_candidates": int(external_mask.sum()),
+                    "within_distance": within_distance,
+                    "median_exact_visit_pair_external_distance": float(np.median(external_distance)),
+                    "between_minus_within_distance": gap,
+                })
+    patient_medians = np.asarray([np.median(values) for values in per_patient.values()], dtype=float)
+    statistic = float(np.median(patient_medians)) if len(patient_medians) else np.nan
+    return statistic, patient_medians, rows
+
+
+def visit_pair_matched_individuality(
+    distance_matrix: pd.DataFrame, metadata: pd.DataFrame, label: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Create observed exact-visit-pair-matched artifacts for the symmetric sensitivity."""
+    meta = metadata.loc[distance_matrix.index]
+    distance = distance_matrix.to_numpy(float)
+    visits = meta.visit.to_numpy(int)
+    labels = meta.patient_id.to_numpy(int)
+    cache = build_exact_visit_pair_cache(visits)
+    _, _, rows = visit_pair_matched_statistic_from_labels(
+        distance, visits, labels, cache, return_rows=True,
+    )
+    pair_metrics = pd.DataFrame(rows)
+    if pair_metrics.empty:
+        return pair_metrics, pd.DataFrame(), {"analysis": label, "n_patients": 0}
+    sample_ids = meta.index.to_numpy()
+    pair_metrics.insert(0, "analysis", label)
+    pair_metrics.insert(2, "first_sample_id", pair_metrics.first_sample_index.map(lambda value: sample_ids[int(value)]))
+    pair_metrics.insert(4, "second_sample_id", pair_metrics.second_sample_index.map(lambda value: sample_ids[int(value)]))
+    patient_metrics = pair_metrics.groupby("patient_id", as_index=False).agg(
+        n_visit_pairs_contributing=("between_minus_within_distance", "size"),
+        median_within_distance=("within_distance", "median"),
+        median_matched_between_distance=("median_exact_visit_pair_external_distance", "median"),
+        between_minus_within_distance=("between_minus_within_distance", "median"),
+    )
+    patient_metrics.insert(0, "analysis", label)
+    values = patient_metrics.between_minus_within_distance.astype(float)
+    low, high = bootstrap_median_ci(values)
+    summary = {
+        "analysis": label,
+        "n_patients": int(len(patient_metrics)),
+        "n_visit_pairs_contributing": int(patient_metrics.n_visit_pairs_contributing.sum()),
+        "median_between_minus_within_distance": float(values.median()),
+        "ci95_low": low,
+        "ci95_high": high,
+        "directional_proportion_positive": float((values > 0).mean()),
+        "wilcoxon_two_sided_p": safe_wilcoxon(values),
+        "ci_method": "patient-level percentile bootstrap",
+        "n_patient_bootstrap_replicates": int(N_BOOTSTRAP),
+        "matching_definition": "each within-patient profile pair compared with cross-patient profile pairs at the identical unordered visit-ordinal pair; external pair members required to come from two different patients, neither the focal patient",
+    }
+    return pair_metrics, patient_metrics, summary
+
+
+def visit_pair_matched_design_preserving_permutation(
+    distance_matrix: pd.DataFrame, metadata: pd.DataFrame,
+) -> tuple[dict, pd.DataFrame]:
+    """Design-preserving randomization for the exact-visit-pair-matched sensitivity."""
+    meta = metadata.loc[distance_matrix.index]
+    if meta.duplicated(["patient_id", "visit"]).any():
+        raise ValueError("Within-visit label permutation requires at most one profile per patient and visit.")
+    distance = distance_matrix.to_numpy(float)
+    visits = meta.visit.to_numpy(int)
+    labels = meta.patient_id.to_numpy(int)
+    cache = build_exact_visit_pair_cache(visits)
+    observed, observed_patient_medians, _ = visit_pair_matched_statistic_from_labels(distance, visits, labels, cache)
+    null = np.empty(N_DESIGN_PERMUTATIONS, dtype=float)
+    rng = np.random.default_rng(SEED + 131)
+    for index in range(N_DESIGN_PERMUTATIONS):
+        permuted_labels = stage_preserving_patient_labels(labels, visits, rng)
+        null[index], _, _ = visit_pair_matched_statistic_from_labels(distance, visits, permuted_labels, cache)
+    null_median = float(np.nanmedian(null))
+    p_upper = float((1 + np.sum(null >= observed)) / (1 + len(null)))
+    p_two_sided = float(
+        (1 + np.sum(np.abs(null - null_median) >= np.abs(observed - null_median)))
+        / (1 + len(null))
+    )
+    summary = {
+        "analysis": "bray_exact_visit_pair_matched_design_preserving_permutation",
+        "n_design_permutations": int(N_DESIGN_PERMUTATIONS),
+        "n_contributing_patients": int(len(observed_patient_medians)),
+        "observed_median_between_minus_within_distance": float(observed),
+        "permuted_null_median": null_median,
+        "permuted_null_q025": float(np.nanquantile(null, 0.025)),
+        "permuted_null_q975": float(np.nanquantile(null, 0.975)),
+        "observed_minus_permuted_null_median": float(observed - null_median),
+        "upper_tail_randomization_p": p_upper,
+        "two_sided_randomization_p_centered_on_null_median": p_two_sided,
+        "two_sided_extremeness_definition": "absolute deviation from the design-preserving randomization-null median",
+        "permutation_scheme": "patient labels independently permuted within visit ordinal; exact unordered visit-pair comparator structure rebuilt after each relabeling",
     }
     return summary, pd.DataFrame({"permutation_index": np.arange(1, N_DESIGN_PERMUTATIONS + 1), "null_statistic": null})
 
@@ -634,6 +802,12 @@ for label, matrix, kwargs in matched_definitions:
     matched_summaries.append(summary)
 
 primary_sample_metrics, primary_patient_metrics = matched_artifacts["primary_bray_same_or_adjacent_visit"]
+visit_pair_metrics, visit_pair_patient_metrics, visit_pair_summary = visit_pair_matched_individuality(
+    function_bray, metadata, "bray_exact_visit_pair_matched",
+)
+visit_pair_metrics.to_csv(DERIVED / "15_visit_pair_matched_individuality_bray_exact_visit_pair_matched.csv", index=False)
+visit_pair_patient_metrics.to_csv(DERIVED / "15_patient_visit_pair_matched_individuality_bray_exact_visit_pair_matched.csv", index=False)
+matched_summaries.append(visit_pair_summary)
 primary_cluster_bootstrap, primary_cluster_bootstrap_distribution = primary_full_recomputation_cluster_bootstrap(function_bray, metadata)
 three_visit_sample_metrics, three_visit_patient_metrics = matched_artifacts["bray_same_or_adjacent_visit_patients_at_least_3_visits"]
 three_visit_ids = metadata.index[metadata.patient_id.isin(
@@ -682,6 +856,9 @@ lopo.to_csv(RESULTS / "16_MATCHED_INDIVIDUALITY_LOPO.csv", index=False)
 primary_permutation, primary_permutation_null = primary_design_preserving_permutation(function_bray, metadata)
 pd.DataFrame([primary_permutation]).to_csv(RESULTS / "16_PRIMARY_DESIGN_PRESERVING_PERMUTATION.csv", index=False)
 primary_permutation_null.to_csv(DERIVED / "16_primary_design_preserving_permutation_null.csv", index=False)
+visit_pair_permutation, visit_pair_permutation_null = visit_pair_matched_design_preserving_permutation(function_bray, metadata)
+pd.DataFrame([visit_pair_permutation]).to_csv(RESULTS / "16_VISIT_PAIR_MATCHED_DESIGN_PRESERVING_PERMUTATION.csv", index=False)
+visit_pair_permutation_null.to_csv(DERIVED / "16_visit_pair_matched_design_preserving_permutation_null.csv", index=False)
 
 
 # --- Layer 2: distance-based variance decomposition -----------------------------------------
@@ -711,7 +888,7 @@ debridement_transition.to_csv(DERIVED / "19_visit0_visit1_transition_metrics.csv
 keep_labels = {
     "primary_bray_same_or_adjacent_visit", "bray_same_or_adjacent_visit_same_antibiotic_state",
     "bray_same_or_adjacent_visit_antibiotic_unexposed_only",
-    "bray_same_or_adjacent_visit_patients_at_least_3_visits",
+    "bray_same_or_adjacent_visit_patients_at_least_3_visits", "bray_exact_visit_pair_matched",
 }
 perturbation = pd.DataFrame([*[row for row in matched_summaries if row["analysis"] in keep_labels], debridement_summary])
 perturbation.to_csv(RESULTS / "19_PERTURBATION_ROBUSTNESS_RESULTS.csv", index=False)
@@ -745,20 +922,25 @@ plt.close(fig)
 
 
 # --- Figure 2: primary and exact-visit individuality -----------------------------------------
-plot_defs = ["primary_bray_same_or_adjacent_visit", "bray_exact_same_visit", "aitchison_same_or_adjacent_visit"]
+plot_defs = ["primary_bray_same_or_adjacent_visit", "bray_exact_same_visit", "bray_exact_visit_pair_matched", "aitchison_same_or_adjacent_visit"]
 plot = matched_results.set_index("analysis").loc[plot_defs].reset_index()
 fig, axes = plt.subplots(1, 2, figsize=(12, 5.5), constrained_layout=True)
-for i, (_, row) in enumerate(plot.iloc[:2].iterrows()):
-    points = pd.read_csv(DERIVED / f"15_patient_matched_individuality_{row.analysis}.csv")["between_minus_within_distance"].dropna().to_numpy()
-    axes[0].scatter(np.full(len(points), i), points, color=["#2a9d8f", "#457b9d"][i], alpha=0.65, s=26, zorder=2)
+for i, (_, row) in enumerate(plot.iloc[:3].iterrows()):
+    points_path = (
+        DERIVED / "15_patient_visit_pair_matched_individuality_bray_exact_visit_pair_matched.csv"
+        if row.analysis == "bray_exact_visit_pair_matched"
+        else DERIVED / f"15_patient_matched_individuality_{row.analysis}.csv"
+    )
+    points = pd.read_csv(points_path)["between_minus_within_distance"].dropna().to_numpy()
+    axes[0].scatter(np.full(len(points), i), points, color=["#2a9d8f", "#457b9d", "#e76f51"][i], alpha=0.65, s=26, zorder=2)
     axes[0].errorbar(i, row.median_between_minus_within_distance,
                      yerr=[[row.median_between_minus_within_distance - row.ci95_low], [row.ci95_high - row.median_between_minus_within_distance]],
                      fmt="D", color="#111111", capsize=4, zorder=3)
 axes[0].axhline(0, color="#555555", linestyle="--", linewidth=1)
-axes[0].set_xticks([0, 1], ["Bray\nsame/adjacent visit", "Bray\nsame visit"])
+axes[0].set_xticks([0, 1, 2], ["Bray\nsame/adjacent visit", "Bray\nsame visit", "Bray\nexact visit pair"])
 axes[0].set_ylabel("Patient median matched-between minus within distance")
 axes[0].set_title("Bray–Curtis primary and exact-visit sensitivity")
-row = plot.iloc[2]
+row = plot.iloc[3]
 points = pd.read_csv(DERIVED / f"15_patient_matched_individuality_{row.analysis}.csv")["between_minus_within_distance"].dropna().to_numpy()
 axes[1].scatter(np.zeros(len(points)), points, color="#6a4c93", alpha=0.65, s=30, zorder=2)
 axes[1].errorbar(0, row.median_between_minus_within_distance,
@@ -815,6 +997,7 @@ plt.close(fig)
 # --- Figure 4: perturbation robustness -------------------------------------------------------
 label_map = {
     "primary_bray_same_or_adjacent_visit": "Primary\nstage-matched",
+    "bray_exact_visit_pair_matched": "Exact\nvisit pair",
     "bray_same_or_adjacent_visit_patients_at_least_3_visits": "Patients with\n≥3 visits",
     "bray_same_or_adjacent_visit_same_antibiotic_state": "Match antibiotic\nstate",
     "bray_same_or_adjacent_visit_antibiotic_unexposed_only": "Exclude exposed\nsamples",
@@ -843,6 +1026,8 @@ summary = {
     "analysis_name": "patient_specific_longitudinal_structure_of_microbial_functional_potential",
     "primary_matched_individuality": matched_summaries[0],
     "primary_design_preserving_permutation": primary_permutation,
+    "exact_visit_pair_matched_sensitivity": visit_pair_summary,
+    "exact_visit_pair_matched_design_preserving_permutation": visit_pair_permutation,
     "primary_full_recomputation_cluster_bootstrap": primary_cluster_bootstrap,
     "patients_at_least_3_visits_full_recomputation_cluster_bootstrap": three_visit_cluster_bootstrap,
     "primary_distance_scale": distance_scale.iloc[0].to_dict(),

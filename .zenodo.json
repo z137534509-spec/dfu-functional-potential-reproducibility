@@ -1,6 +1,6 @@
 {
   "title": "Reproducibility package: patient-specific microbial functional potential in longitudinal diabetic foot ulcers",
-  "description": "Analysis code and nonidentifying derived outputs for a reproducible secondary analysis of longitudinal shotgun-metagenomic functional profiles from BioProject PRJNA506988. The primary estimand is the patient-level median of stage-matched between-patient minus within-patient Bray-Curtis distance across broad SEED Level-1 functional-potential profiles. This record supports a bounded ecological observation in the source cohort and does not establish functional activity, mechanism, healing relevance, treatment effects, clinical utility, or external validity.",
+  "description": "Analysis code and nonidentifying derived outputs for a reproducible secondary analysis of longitudinal shotgun-metagenomic functional-potential profiles from BioProject PRJNA506988. The primary estimand is the patient-level median of stage-matched between-patient minus within-patient Bray-Curtis distance across broad SEED Level-1 functional-potential profiles. Version 1.1.0 adds a symmetric exact-visit-pair sensitivity and a two-sided design-preserving randomization sensitivity. This record supports a bounded ecological observation in the source cohort and does not establish functional activity, mechanism, healing relevance, treatment effects, clinical utility, or external validity.",
   "creators": [
     {
       "name": "Zhang, Hongjie",
@@ -12,10 +12,10 @@
     }
   ],
   "upload_type": "software",
-  "publication_date": "2026-09-13",
+  "publication_date": "2026-09-17",
   "access_right": "open",
   "license": "cc-by-4.0",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "language": "eng",
   "keywords": [
     "diabetic foot ulcer",
